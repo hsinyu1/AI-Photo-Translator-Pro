@@ -11,6 +11,7 @@ export default function App() {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [error, setError] = useState<string | null>(null);
   const [processingTime, setProcessingTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   
   // API Key Settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -35,6 +36,17 @@ export default function App() {
     setStatus("API Key cleared");
     setTimeout(() => setStatus(""), 3000);
   };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isProcessing) {
+      setElapsedSeconds(0);
+      interval = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -135,6 +147,17 @@ export default function App() {
             AI Photo Translator Pro
           </motion.h1>
           <p className="text-gray-500 mt-2">Powered by Gemini AI Vision & Translation</p>
+          <div className={`flex items-center justify-center gap-1.5 font-medium text-sm mt-1 ${!apiKey ? "text-red-500 animate-pulse" : "text-gray-600"}`}>
+            {!apiKey ? (
+              <>
+                請先在右上角 <Settings className="w-3.5 h-3.5" /> 輸入 Gemini API Key
+              </>
+            ) : (
+              <>
+                已設定 Gemini API Key，可開始翻譯
+              </>
+            )}
+          </div>
           {processingTime !== null && (
             <motion.p 
               initial={{ opacity: 0 }}
@@ -175,11 +198,19 @@ export default function App() {
                 className="flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white py-4 px-6 rounded-2xl font-semibold transition-all shadow-md active:scale-95"
               >
                 {isProcessing ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <div className="flex flex-col items-center">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Processing... ({elapsedSeconds}s)</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-normal mt-0.5">平均需要 30-60 秒</span>
+                  </div>
                 ) : (
-                  <RefreshCw className="w-5 h-5" />
+                  <>
+                    <RefreshCw className="w-5 h-5" />
+                    <span>Translate Now</span>
+                  </>
                 )}
-                {isProcessing ? "Processing..." : "Translate Now"}
               </button>
             </div>
 
@@ -231,53 +262,54 @@ export default function App() {
                     const width = (Math.max(...vertices.map(v => v.x || 0)) - Math.min(...vertices.map(v => v.x || 0))) * containerWidth / 1000;
                     const height = (Math.max(...vertices.map(v => v.y || 0)) - Math.min(...vertices.map(v => v.y || 0))) * containerHeight / 1000;
 
-                    // Improved font size calculation based on box area and text length
+                    // 1. 初始化與環境偵測
                     const charCount = block.translatedText.length || 1;
-                    const lineHeight = 1.1;
-                    const padding = 4; // Total horizontal/vertical padding
-                    const availableWidth = Math.max(width - padding, 1);
-                    const availableHeight = Math.max(height - padding, 1);
-
+                    const rootFontSize = 16; // 預設 16px
                     const isVertical = block.orientation === "vertical";
+                    const padding = 4;
+                    const targetW = Math.max(width - padding, 1);
+                    const targetH = Math.max(height - padding, 1);
 
-                    // Precise check to see if text fits within the box at a given font size
-                    const checkFits = (size: number) => {
+                    // 設定邊界
+                    let minSize = 12;
+                    let maxSize = isVertical ? Math.min(40, targetH) : Math.min(40, targetW);
+                    let bestSize = 12;
+                    const precision = 0.5;
+
+                    // 3. 空間判斷函式 (checkFits)
+                    const checkFits = (size: number, W: number, H: number, count: number) => {
+                      const safeLineHeight = 1.2;
+                      const effectiveSize = size * 1.05; // 預留 5% 緩衝空間
+
                       if (isVertical) {
-                        // For vertical text, height limits chars per column, width limits total columns
-                        const charsPerColumn = Math.max(Math.floor(availableHeight / (size * 1.02)), 1);
-                        const columnsNeeded = Math.ceil(charCount / charsPerColumn);
-                        const totalWidth = columnsNeeded * size * lineHeight;
-                        return totalWidth <= availableWidth * 0.95;
+                        const charsPerColumn = Math.max(Math.floor(H / effectiveSize), 1);
+                        const totalColumns = Math.ceil(count / charsPerColumn);
+                        const neededWidth = totalColumns * size * safeLineHeight;
+                        return neededWidth <= W;
                       } else {
-                        // For horizontal text, width limits chars per line, height limits total lines
-                        const charsPerLine = Math.max(Math.floor(availableWidth / (size * 1.02)), 1);
-                        const linesNeeded = Math.ceil(charCount / charsPerLine);
-                        const totalHeight = linesNeeded * size * lineHeight;
-                        return totalHeight <= availableHeight * 0.95;
+                        const charsPerLine = Math.max(Math.floor(W / effectiveSize), 1);
+                        const totalLines = Math.ceil(count / charsPerLine);
+                        const neededHeight = totalLines * size * safeLineHeight;
+                        return neededHeight <= H;
                       }
                     };
 
-                    // Iteratively find the best font size that fits
-                    // Start from a size that definitely fits the width/height at minimum
-                    let bestSize = isVertical 
-                      ? Math.min(40, availableHeight, availableWidth * 0.8)
-                      : Math.min(40, availableWidth, availableHeight * 0.8);
-                    
-                    while (bestSize > 12 && !checkFits(bestSize)) {
-                      bestSize -= 0.5;
+                    // 2. 二分搜尋核心 (The Search Loop)
+                    let low = minSize;
+                    let high = maxSize;
+                    while (low <= high) {
+                      const mid = (low + high) / 2;
+                      if (checkFits(mid, targetW, targetH, charCount)) {
+                        bestSize = mid;
+                        low = mid + precision;
+                      } else {
+                        high = mid - precision;
+                      }
                     }
-                    
-                    let fontSize: number;
-                    let shouldScroll: boolean;
-                    
-                    if (checkFits(bestSize)) {
-                      fontSize = bestSize;
-                      shouldScroll = false;
-                    } else {
-                      // If it still doesn't fit at 12px, fix at 12px and enable scroll
-                      fontSize = 12;
-                      shouldScroll = true;
-                    }
+
+                    // 4. 單位轉換與輸出
+                    const finalRem = bestSize / rootFontSize;
+                    const shouldScroll = bestSize === 12 && !checkFits(12, targetW, targetH, charCount);
 
                     return (
                       <motion.div
@@ -300,8 +332,8 @@ export default function App() {
                           justifyContent: shouldScroll ? "flex-start" : "center",
                           padding: width < 20 || height < 20 ? "0px" : "2px",
                           borderRadius: "2px",
-                          fontSize: fontSize + "px",
-                          lineHeight: lineHeight.toString(),
+                          fontSize: `${finalRem}rem`,
+                          lineHeight: "1.2",
                           textAlign: "center",
                           writingMode: isVertical ? "vertical-rl" : "horizontal-tb",
                           overflowY: !isVertical && shouldScroll ? "auto" : "hidden",
