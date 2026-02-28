@@ -1,0 +1,5 @@
+{
+  "name": "AI Photo Translator Pro",
+  "description": "Professional photo translation using Google Cloud Vision for OCR and Gemini AI for context-aware translation, with real-time text overlay.",
+  "requestFramePermissions": ["camera"]
+}
