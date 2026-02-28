@@ -166,7 +166,6 @@ export default function App() {
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 accept="image/*"
-                capture="environment"
                 className="hidden"
               />
               
@@ -264,7 +263,7 @@ export default function App() {
                       ? Math.min(40, availableHeight, availableWidth * 0.8)
                       : Math.min(40, availableWidth, availableHeight * 0.8);
                     
-                    while (bestSize > 10 && !checkFits(bestSize)) {
+                    while (bestSize > 12 && !checkFits(bestSize)) {
                       bestSize -= 0.5;
                     }
                     
@@ -275,8 +274,8 @@ export default function App() {
                       fontSize = bestSize;
                       shouldScroll = false;
                     } else {
-                      // If it still doesn't fit at 10px, fix at 10px and enable scroll
-                      fontSize = 10;
+                      // If it still doesn't fit at 12px, fix at 12px and enable scroll
+                      fontSize = 12;
                       shouldScroll = true;
                     }
 
@@ -286,6 +285,7 @@ export default function App() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: idx * 0.02 }}
+                        className="no-scrollbar"
                         style={{
                           position: "absolute",
                           left: x,
@@ -306,11 +306,11 @@ export default function App() {
                           writingMode: isVertical ? "vertical-rl" : "horizontal-tb",
                           overflowY: !isVertical && shouldScroll ? "auto" : "hidden",
                           overflowX: isVertical && shouldScroll ? "auto" : "hidden",
+                          WebkitOverflowScrolling: "touch",
                           wordBreak: "break-all",
                           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
                           zIndex: 10,
                           border: "1px solid rgba(79, 70, 229, 0.3)",
-                          scrollbarWidth: "none",
                         }}
                         title={block.text}
                       >
